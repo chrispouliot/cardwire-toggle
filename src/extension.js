@@ -6,7 +6,7 @@
  *   iface    : com.github.opengamingcollective.cardwire
  *
  * Methods used:
- *   GetMode() -> s         (returns "Current Mode: Integrated"-style string)
+ *   GetMode() -> s         (returns "Current Mode: Integrated"-style or JSON)
  *   SetMode(s)             (accepts lowercase "integrated" | "hybrid" | "manual")
  *
  * Reactive updates:
@@ -32,49 +32,68 @@ const INTERFACE     = 'com.github.opengamingcollective.cardwire';
 const STATE_FILE    = '/var/lib/cardwire/cardwire.toml';
 const POLL_FALLBACK_SECONDS = 5;
 
-/* Three modes the daemon supports. Order here is the order they appear in the
- * sub-menu. Keep ids lowercase — that's what SetMode wants. */
-const MODES = [
-    { id: 'integrated', label: _('Integrated'), icon: 'cardwire-integrated-symbolic' },
-    { id: 'hybrid',     label: _('Hybrid'),     icon: 'cardwire-hybrid-symbolic'     },
-    { id: 'manual',     label: _('Manual'),     icon: 'cardwire-manual-symbolic'     },
-];
+/* Mode definitions are returned by a function (not a const) because
+ * gettext (`_`) can only be called from inside extension methods in
+ * GNOME 49+, not at module load time. */
+function getModes() {
+    return [
+        { id: 'integrated', label: _('Integrated'), icon: 'cardwire-integrated-symbolic' },
+        { id: 'hybrid',     label: _('Hybrid'),     icon: 'cardwire-hybrid-symbolic'     },
+        { id: 'manual',     label: _('Manual'),     icon: 'cardwire-manual-symbolic'     },
+    ];
+}
 
-/* cardwire is inconsistent about casing and prefixes:
- *   GetMode D-Bus return : "Current Mode: Integrated"
- *   TOML state file      : mode = "Hybrid"
- *   SetMode input        : "integrated"
- * Normalize everything to lowercase ids. */
+/* cardwire's GetMode return is inconsistent across versions.
+ * 0.5.0  : "Current Mode: Integrated"
+ * Normalize all of these to lowercase ids. */
 function parseMode(text) {
     if (!text) return null;
+    // Fall back to substring match
     const m = String(text).match(/(integrated|hybrid|manual)/i);
     return m ? m[1].toLowerCase() : null;
 }
 
+/* Build a Gio.Icon for a custom icon name by resolving the SVG file
+ * inside the extension's icons/ directory.  This bypasses GNOME's
+ * icon-theme search path and works reliably regardless of theme. */
+function makeCustomIcon(extensionPath, iconBaseName) {
+    const path = GLib.build_filenamev(
+        [extensionPath, 'icons', `${iconBaseName}.svg`]);
+    return Gio.FileIcon.new(Gio.File.new_for_path(path));
+}
+
 const CardwireToggle = GObject.registerClass(
 class CardwireToggle extends QuickMenuToggle {
-    _init() {
+    _init(extensionPath) {
         super._init({
             title: _('GPU Mode'),
-            iconName: 'video-display-symbolic',
-            toggleMode: false,   // we drive `checked` from daemon state, not the click
+            // Use a stock icon as the initial placeholder; replaced on first refresh.
+            iconName: 'preferences-system-symbolic',
+            toggleMode: false,
         });
 
+        this._extensionPath = extensionPath;
         this._currentMode  = null;
         this._proxy        = null;
         this._fileMonitor  = null;
         this._fileMonitorChangedId = 0;
         this._pollSourceId = 0;
         this._ownerChangedId = 0;
-        this._inFlight     = false;   // suppress click-spam during a SetMode round-trip
+        this._inFlight     = false;
         this._modeItems    = new Map();
 
-        // Header on the sub-menu — opens when the user clicks the right-side arrow
-        this.menu.setHeader('video-display-symbolic', _('GPU Mode'),
+        // Pre-build gicons for each mode so we're not constructing on every refresh
+        this._modeIcons = new Map();
+        for (const m of getModes()) {
+            this._modeIcons.set(m.id,
+                makeCustomIcon(extensionPath, m.icon));
+        }
+
+        this.menu.setHeader('preferences-system-symbolic', _('GPU Mode'),
             _('Switch between integrated and discrete GPU modes'));
 
-        // Radio-style mode items
-        for (const m of MODES) {
+        // Mode menu items (radio-style with ornament dots)
+        for (const m of getModes()) {
             const item = new PopupMenu.PopupMenuItem(m.label);
             item.connect('activate', () => {
                 this.menu.close();
@@ -84,8 +103,8 @@ class CardwireToggle extends QuickMenuToggle {
             this._modeItems.set(m.id, item);
         }
 
-        // Click on the toggle body (not the arrow) cycles integrated <-> hybrid.
-        // Manual is reachable only via the sub-menu — it's a power-user mode.
+        // Click on toggle body cycles integrated <-> hybrid.
+        // Manual is reachable only via the sub-menu.
         this.connect('clicked', () => {
             if (this._inFlight) return;
             const next = this._currentMode === 'integrated' ? 'hybrid' : 'integrated';
@@ -109,7 +128,6 @@ class CardwireToggle extends QuickMenuToggle {
                 });
         });
 
-        // Daemon may come and go (e.g. cardwired restart); track ownership
         this._ownerChangedId = this._proxy.connect(
             'notify::g-name-owner', () => this._onOwnerChanged());
         this._onOwnerChanged();
@@ -129,17 +147,14 @@ class CardwireToggle extends QuickMenuToggle {
         }
     }
 
-    /* ---- state watching: file monitor preferred, polling as fallback ---- */
+    /* ---- state watching ---- */
 
     _startWatching() {
-        // Try a FileMonitor first — event-driven, zero idle cost.
         try {
             const file = Gio.File.new_for_path(STATE_FILE);
             this._fileMonitor = file.monitor_file(Gio.FileMonitorFlags.NONE, null);
             this._fileMonitorChangedId = this._fileMonitor.connect(
                 'changed', (_mon, _f, _other, eventType) => {
-                    // CHANGES_DONE_HINT fires when an editor finishes writing;
-                    // CHANGED handles atomic-rename style writes too.
                     if (eventType === Gio.FileMonitorEvent.CHANGES_DONE_HINT ||
                         eventType === Gio.FileMonitorEvent.CHANGED ||
                         eventType === Gio.FileMonitorEvent.CREATED) {
@@ -147,7 +162,7 @@ class CardwireToggle extends QuickMenuToggle {
                     }
                 });
         } catch (e) {
-            log(`cardwire: FileMonitor unavailable, falling back to polling: ${e.message}`);
+            log(`cardwire: FileMonitor unavailable, polling instead: ${e.message}`);
             this._startPolling();
         }
     }
@@ -206,8 +221,7 @@ class CardwireToggle extends QuickMenuToggle {
                 this._inFlight = false;
                 try {
                     proxy.call_finish(res);
-                    // Optimistic update — file monitor / poll will reconcile shortly
-                    this._applyMode(mode);
+                    this._applyMode(mode);   // optimistic
                 } catch (e) {
                     Main.notifyError(_('Cardwire'),
                         _('Failed to set mode: %s').format(e.message));
@@ -223,12 +237,12 @@ class CardwireToggle extends QuickMenuToggle {
         this._currentMode = mode;
 
         this.subtitle = mode.charAt(0).toUpperCase() + mode.slice(1);
-        // "checked" lit means dGPU is active. Hybrid uses both; integrated blocks dGPU.
+        // "checked" lit means dGPU is active (Hybrid uses both; Integrated blocks dGPU).
         this.checked = (mode === 'hybrid');
 
-        // Swap the toggle's icon to reflect mode at a glance
-        const modeDef = MODES.find(m => m.id === mode);
-        if (modeDef) this.iconName = modeDef.icon;
+        // Swap to the custom icon for this mode
+        const gicon = this._modeIcons.get(mode);
+        if (gicon) this.gicon = gicon;
 
         // Update radio dots in the sub-menu
         for (const [id, item] of this._modeItems) {
@@ -251,16 +265,18 @@ class CardwireToggle extends QuickMenuToggle {
 
 const CardwireIndicator = GObject.registerClass(
 class CardwireIndicator extends SystemIndicator {
-    _init() {
+    _init(extensionPath) {
         super._init();
-        this._toggle = new CardwireToggle();
+        this._toggle = new CardwireToggle(extensionPath);
         this.quickSettingsItems.push(this._toggle);
     }
 });
 
 export default class CardwireExtension extends Extension {
     enable() {
-        this._indicator = new CardwireIndicator();
+        // `this.path` is the absolute path to the extension's directory —
+        // we forward it down so child widgets can resolve icons/ files.
+        this._indicator = new CardwireIndicator(this.path);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
     }
 
