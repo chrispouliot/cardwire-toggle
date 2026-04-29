@@ -1,5 +1,7 @@
 # Cardwire GPU Mode — GNOME Shell Extension
 
+<img src="example.png" width="300" height="600" alt="Quick Settings Example Photo">
+
 A Quick Settings toggle for [cardwire](https://github.com/OpenGamingCollective/cardwire),
 the eBPF-based GPU manager. Mirrors the UX of the Power Profiles Daemon tile:
 click to flip between Integrated and Hybrid, expand for the full mode list,
