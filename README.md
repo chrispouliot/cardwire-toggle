@@ -27,12 +27,23 @@ Gnome Shell 45 or newer
 
 ### Manually
 
+You can manually install the extension from the zip file under the releases.
+The following commands will install it locally for your user
+```
+curl -L "https://github.com/chrispouliot/cardwire-toggle/releases/latest/download/cardwire-toggle@chrispouliot.github.io.shell-extension.zip" \
+  -o /tmp/cardwire-toggle.zip
+
+gnome-extensions install --force /tmp/cardwire-toggle.zip
+
+# log out, log back in, then:
+gnome-extensions enable cardwire-toggle@chrispouliot.github.io
+```
+
 ### NixOS Flake
 
 This project includes a flake.nix which allows it to be imported through a users nix flake configuration. Add it to your own flake.nix as follows
 
 ```
-{
 {
   description = "My configuration";
 
