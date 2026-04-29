@@ -41,6 +41,17 @@
         };
       });
 
+      # Development shell
+      devShells = forAllSystems ({ pkgs }: {
+        default = pkgs.mkShell {
+          buildInputs = [
+            pkgs.gnome-shell
+            pkgs.glib
+            pkgs.zip
+          ];
+        };
+      });
+
       # Importable Nix module
       nixosModules.default = { config, lib, pkgs, ... }: {
         config = lib.mkIf config.services.desktopManager.gnome.enable {
