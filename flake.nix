@@ -36,14 +36,14 @@
           meta = with pkgs.lib; {
             description = "GNOME Shell Quick Settings toggle for cardwire GPU mode";
             license = licenses.gpl3Plus;
-            platforms = platforms.linux;
+            platforms = pkgs.lib.platforms.linux;
           };
         };
       });
 
       # Importable Nix module
       nixosModules.default = { config, lib, pkgs, ... }: {
-        config = lib.mkIf config.services.xserver.desktopManager.gnome.enable {
+        config = lib.mkIf config.services.desktopManager.gnome.enable {
           environment.systemPackages = [ self.packages.${pkgs.system}.default ];
         };
       };
