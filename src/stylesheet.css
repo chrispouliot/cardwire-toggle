@@ -1,0 +1,7 @@
+/* Custom icons for the cardwire toggle. They live in icons/ and use
+ * `-symbolic` suffix so GNOME recolors them to match the active state
+ * (white when checked, dim when not). */
+
+.cardwire-toggle StIcon {
+    icon-size: 16px;
+}

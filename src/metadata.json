@@ -1,0 +1,8 @@
+{
+  "uuid": "cardwire-toggle@chrispouliot.github.io",
+  "name": "Cardwire GPU Toggle",
+  "description": "Quick Settings toggle to switch between Integrated, Hybrid, and Manual GPU modes via the cardwire D-Bus daemon. Designed for dual-GPU laptops.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/chrispouliot/cardwire-toggle",
+  "gettext-domain": "cardwire-toggle"
+}}

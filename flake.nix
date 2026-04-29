@@ -1,5 +1,5 @@
 {
-  description = "Cardwire GPU Mode — GNOME Shell Quick Settings extension";
+  description = "Cardwire GPU Toggle - GNOME Shell Quick Settings extension";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -11,10 +11,10 @@
     in {
       packages = forAllSystems ({ pkgs }: {
         default = pkgs.stdenvNoCC.mkDerivation {
-          pname  = "gnome-shell-extension-cardwire";
+          pname  = "gnome-shell-extension-cardwire-toggle";
           version = "0.1.0";
 
-          src = ./cardwire-toggle@chrispouliot.github.com;
+          src = ./src;
 
           nativeBuildInputs = [ pkgs.glib ];
 
@@ -23,7 +23,7 @@
 
           installPhase = ''
             runHook preInstall
-            uuid="cardwire-toggle@chrispouliot.github.com"
+            uuid="cardwire-toggle@chrispouliot.github.io"
             target="$out/share/gnome-shell/extensions/$uuid"
             mkdir -p "$target"
             cp -r ./* "$target/"
