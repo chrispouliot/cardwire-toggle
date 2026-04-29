@@ -32,9 +32,6 @@ const INTERFACE     = 'com.github.opengamingcollective.cardwire';
 const STATE_FILE    = '/var/lib/cardwire/cardwire.toml';
 const POLL_FALLBACK_SECONDS = 5;
 
-/* Mode definitions are returned by a function (not a const) because
- * gettext (`_`) can only be called from inside extension methods in
- * GNOME 49+, not at module load time. */
 function getModes() {
     return [
         { id: 'integrated', label: _('Integrated'), icon: 'cardwire-integrated-symbolic' },
@@ -48,7 +45,6 @@ function getModes() {
  * Normalize all of these to lowercase ids. */
 function parseMode(text) {
     if (!text) return null;
-    // Fall back to substring match
     const m = String(text).match(/(integrated|hybrid|manual)/i);
     return m ? m[1].toLowerCase() : null;
 }
@@ -89,8 +85,7 @@ class CardwireToggle extends QuickMenuToggle {
                 makeCustomIcon(extensionPath, m.icon));
         }
 
-        this.menu.setHeader('preferences-system-symbolic', _('GPU Mode'),
-            _('Switch between integrated and discrete GPU modes'));
+        this.menu.setHeader('preferences-system-symbolic', _('GPU Mode'));
 
         // Mode menu items (radio-style with ornament dots)
         for (const m of getModes()) {
