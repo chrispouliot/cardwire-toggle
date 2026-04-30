@@ -55,7 +55,7 @@
       # Importable Nix module
       nixosModules.default = { config, lib, pkgs, ... }: {
         config = lib.mkIf config.services.desktopManager.gnome.enable {
-          environment.systemPackages = [ self.packages.${pkgs.system}.default ];
+          environment.systemPackages = [ self.packages.${pkgs.stdenv.hostPlatform.system}.default ];
         };
       };
     };

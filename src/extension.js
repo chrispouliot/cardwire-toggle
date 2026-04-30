@@ -29,8 +29,7 @@ const BUS_NAME      = 'com.github.opengamingcollective.cardwire';
 const OBJECT_PATH   = '/com/github/opengamingcollective/cardwire';
 const INTERFACE     = 'com.github.opengamingcollective.cardwire';
 
-const STATE_FILE    = '/var/lib/cardwire/cardwire.toml';
-const POLL_FALLBACK_SECONDS = 5;
+const POLL_INTERVAL_SECONDS = 5;
 
 function getModes() {
     return [
@@ -71,8 +70,6 @@ class CardwireToggle extends QuickMenuToggle {
         this._extensionPath = extensionPath;
         this._currentMode  = null;
         this._proxy        = null;
-        this._fileMonitor  = null;
-        this._fileMonitorChangedId = 0;
         this._pollSourceId = 0;
         this._ownerChangedId = 0;
         this._inFlight     = false;
@@ -145,44 +142,24 @@ class CardwireToggle extends QuickMenuToggle {
     /* ---- state watching ---- */
 
     _startWatching() {
-        try {
-            const file = Gio.File.new_for_path(STATE_FILE);
-            this._fileMonitor = file.monitor_file(Gio.FileMonitorFlags.NONE, null);
-            this._fileMonitorChangedId = this._fileMonitor.connect(
-                'changed', (_mon, _f, _other, eventType) => {
-                    if (eventType === Gio.FileMonitorEvent.CHANGES_DONE_HINT ||
-                        eventType === Gio.FileMonitorEvent.CHANGED ||
-                        eventType === Gio.FileMonitorEvent.CREATED) {
-                        this._refresh();
-                    }
-                });
-        } catch (e) {
-            log(`cardwire: FileMonitor unavailable, polling instead: ${e.message}`);
-            this._startPolling();
-        }
+	// Cardwire doesnt expose a dbus event to watch and the state filechange watcher didnt work
+	this._startPolling();
     }
 
     _stopWatching() {
-        if (this._fileMonitorChangedId && this._fileMonitor) {
-            this._fileMonitor.disconnect(this._fileMonitorChangedId);
-            this._fileMonitorChangedId = 0;
-        }
-        if (this._fileMonitor) {
-            this._fileMonitor.cancel();
-            this._fileMonitor = null;
-        }
-        if (this._pollSourceId) {
+	if (this._pollSourceId) {
             GLib.Source.remove(this._pollSourceId);
             this._pollSourceId = 0;
-        }
+   	 }
     }
 
     _startPolling() {
-        if (this._pollSourceId) return;
-        this._pollSourceId = GLib.timeout_add_seconds(
+	if (this._pollSourceId) return;
+	this._pollSourceId = GLib.timeout_add_seconds(
             GLib.PRIORITY_DEFAULT,
-            POLL_FALLBACK_SECONDS,
-            () => { this._refresh(); return GLib.SOURCE_CONTINUE; });
+            POLL_INTERVAL_SECONDS,
+            () => { this._refresh(); return GLib.SOURCE_CONTINUE;
+	});
     }
 
     /* ---- D-Bus calls ---- */
