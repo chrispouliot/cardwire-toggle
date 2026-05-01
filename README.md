@@ -15,7 +15,7 @@ The extension talks to the `cardwired` system daemon directly over D-Bus —
 no `pkexec`, no shelling out to the CLI. cardwired's D-Bus policy is open
 on the system bus, so calls go through silently.
 
-Mode changes initiated from anywhere that uses `cardwire set …` from a terminal or other tool are detected via state polling which will be replaced with a dbus event watched when available.
+Mode changes initiated from anywhere that uses `cardwire set …` from a terminal or other tool are detected via a dbus event watcher, no polling necessary.
 
 ## Requirements
 Gnome Shell 45 or newer
