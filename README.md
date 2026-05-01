@@ -1,4 +1,4 @@
-# Cardwire GPU Mode — GNOME Shell Extension
+# Cardwire Toggle - GNOME Shell Extension
 
 <img src="example.png" width="300" height="600" alt="Quick Settings Example Photo">
 
