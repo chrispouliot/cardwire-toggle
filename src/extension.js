@@ -5,13 +5,13 @@
  *   path     : /com/github/opengamingcollective/cardwire
  *   iface    : com.github.opengamingcollective.cardwire
  *
- * Surface used (cardwire dev branch / PR #11 and later):
+ * 
  *   Mode (property, u, read/write, emits-change)
  *     0 = Integrated
  *     1 = Hybrid
  *     2 = Manual
  *
- * Reactive updates come for free via PropertiesChanged — no polling,
+ * Reactive updates come for free via PropertiesChanged: no polling,
  * no file-watching. Mode changes from any client (CLI, this extension,
  * other tools) propagate to the UI within milliseconds.
  *
