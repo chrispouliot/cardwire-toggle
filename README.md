@@ -23,6 +23,10 @@ Gnome Shell 45 or newer
 
 ## Installation
 
+### Gnome Extensions
+
+Download directly from the [Gnome Extensions Page](https://extensions.gnome.org/extension/9919/cardwire-gpu-toggle/)
+
 ### Manually
 
 You can manually install the extension from the zip file under the releases.
