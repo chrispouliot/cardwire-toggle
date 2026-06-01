@@ -29,7 +29,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const BUS_NAME    = 'com.github.opengamingcollective.cardwire';
 const OBJECT_PATH = '/com/github/opengamingcollective/cardwire';
-const INTERFACE   = 'com.github.opengamingcollective.cardwire';
+const INTERFACE   = 'com.github.opengamingcollective.cardwire.Mode';
 
 const MODE_INTEGRATED = 0;
 const MODE_HYBRID     = 1;
