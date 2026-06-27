@@ -1,12 +1,13 @@
 # Cardwire Toggle - GNOME Shell Extension
 
-<img src="example.png" width="300" height="600" alt="Quick Settings Example Photo">
+<img width="373" height="355" alt="Quick Settings Example Photo" src="https://github.com/user-attachments/assets/3f444879-1853-4a2c-b81d-4308483fcad1" />
+
 
 A Quick Settings toggle for [cardwire](https://github.com/OpenGamingCollective/cardwire),
 the eBPF-based Linux GPU manager. Mirrors the UX of the Power Profiles Daemon tile:
 click to flip between Integrated and Hybrid, expand for the full mode list.
 
-Tested against cardwire 0.9.0 on NixOS with GNOME 50 on an Asus G14 (2025).
+Tested against cardwire 0.10.2 on NixOS with GNOME 50 on an Asus G14 (2025).
 
 ## How it works
 
