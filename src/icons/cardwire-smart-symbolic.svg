@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <!-- Same chip outline as the manual icon for visual consistency -->
-  <path d="M4 3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zm.5 1h7a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-7a.5.5 0 0 1 .5-.5z"/>
-  <!-- Sparkle / four-point star inside (the "smart" indicator) -->
-  <path d="M8 5.5l.7 1.8L10.5 8 8.7 8.7 8 10.5 7.3 8.7 5.5 8l1.8-.7z"/>
+  <!-- Main sparkle, offset to the lower-left to make room for the accent -->
+  <path d="M6.5 2l1.2 3.6L11.3 6.8 7.7 8 6.5 11.6 5.3 8 1.7 6.8l3.6-1.2z"/>
+  <!-- Small accent sparkle in the upper-right -->
+  <path d="M12 9.5l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z"/>
 </svg>
