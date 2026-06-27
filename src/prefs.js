@@ -45,29 +45,33 @@ function getBatteryModeChoices() {
     return [
         { value: MODE_INTEGRATED, label: _('Integrated') },
         { value: MODE_HYBRID,     label: _('Hybrid')     },
-        { value: MODE_MANUAL,     label: _('Manual')     },
         { value: MODE_SMART,      label: _('Smart')      },
+        { value: MODE_MANUAL,     label: _('Manual')     },
     ];
 }
 
 /* Three boolean properties shown as switches. Function for the same reason
- * as above — _() must be called after the extension is instantiated. */
+ * as above — _() must be called after the extension is instantiated.
+ * `group` controls which Adw.PreferencesGroup the row is added to. */
 function getConfigSwitches() {
     return [
         {
             property: 'AutoApplyGpuState',
+            group:    'general',
             title:    _('Auto-apply GPU state'),
             subtitle: _('Apply the saved GPU mode automatically when the daemon starts.'),
         },
         {
-            property: 'BatteryAutoSwitch',
-            title:    _('Auto-switch mode on battery'),
-            subtitle: _('Switch to a chosen mode automatically when running on battery.'),
-        },
-        {
             property: 'ExperimentalNvidiaBlock',
+            group:    'general',
             title:    _('Experimental Nvidia block'),
             subtitle: _('Enable extra blocking paths for Nvidia GPUs. May affect stability.'),
+        },
+        {
+            property: 'BatteryAutoSwitch',
+            group:    'battery',
+            title:    _('Auto-switch mode on battery'),
+            subtitle: _('Switch to a chosen mode automatically when running on battery.'),
         },
     ];
 }
@@ -91,12 +95,20 @@ export default class CardwirePrefs extends ExtensionPreferences {
         this._statusGroup.add(this._statusPage);
         page.add(this._statusGroup);
 
-        this._switchGroup = new Adw.PreferencesGroup({
-            title:       _('Daemon configuration'),
-            description: _('Changes apply immediately and are saved to /etc/cardwire/cardwire.toml.'),
-            visible:     false,
+        // Two grouped sections: general daemon settings and battery behavior.
+        // Each has its own header so the relationship between
+        // "Auto-switch on battery" and "Battery mode" is visually explicit.
+        this._generalGroup = new Adw.PreferencesGroup({
+            title:   _('General'),
+            visible: false,
         });
-        page.add(this._switchGroup);
+        page.add(this._generalGroup);
+
+        this._batteryGroup = new Adw.PreferencesGroup({
+            title:   _('Battery'),
+            visible: false,
+        });
+        page.add(this._batteryGroup);
 
         this._switchRows     = new Map();
         this._batteryModeRow = null;
@@ -105,7 +117,7 @@ export default class CardwirePrefs extends ExtensionPreferences {
         this._ownerChangedId = 0;
         this._suppressWrite  = false; // guard against echo loops
 
-        // Build boolean rows
+        // Build boolean rows, routing each to its declared group
         for (const def of getConfigSwitches()) {
             const row = new Adw.SwitchRow({
                 title:    def.title,
@@ -119,11 +131,15 @@ export default class CardwirePrefs extends ExtensionPreferences {
                 this._writeBoolProperty(def.property, row.get_active());
             });
 
-            this._switchGroup.add(row);
+            const targetGroup = (def.group === 'battery')
+                ? this._batteryGroup
+                : this._generalGroup;
+            targetGroup.add(row);
             this._switchRows.set(def.property, row);
         }
 
-        // Build battery-mode dropdown
+        // Build battery-mode dropdown, added to the Battery group right after
+        // the BatteryAutoSwitch row so the relationship is visually clear
         const batteryModeChoices = getBatteryModeChoices();
         const modeList = new Gtk.StringList();
         for (const c of batteryModeChoices) modeList.append(c.label);
@@ -143,7 +159,7 @@ export default class CardwirePrefs extends ExtensionPreferences {
             if (choice) this._writeUintProperty('BatteryAutoSwitchMode', choice.value);
         });
 
-        this._switchGroup.add(this._batteryModeRow);
+        this._batteryGroup.add(this._batteryModeRow);
 
         this._initProxy().catch(e => logError(e, 'cardwire prefs: initProxy failed'));
 
@@ -324,16 +340,18 @@ export default class CardwirePrefs extends ExtensionPreferences {
     }
 
     _showSwitches() {
-        this._statusGroup.visible = false;
-        this._switchGroup.visible = true;
+        this._statusGroup.visible  = false;
+        this._generalGroup.visible = true;
+        this._batteryGroup.visible = true;
     }
 
     _showError(message) {
         this._statusPage.set_icon_name('dialog-error-symbolic');
         this._statusPage.set_title(_('Configuration unavailable'));
         this._statusPage.set_description(message);
-        this._statusGroup.visible = true;
-        this._switchGroup.visible = false;
+        this._statusGroup.visible  = true;
+        this._generalGroup.visible = false;
+        this._batteryGroup.visible = false;
     }
 
     _teardown() {
