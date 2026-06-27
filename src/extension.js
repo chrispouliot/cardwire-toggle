@@ -3,13 +3,13 @@
  * Talks to the cardwired system daemon over D-Bus:
  *   bus name : com.github.opengamingcollective.cardwire
  *   path     : /com/github/opengamingcollective/cardwire
- *   iface    : com.github.opengamingcollective.cardwire
+ *   iface    : com.github.opengamingcollective.cardwire.Mode
  *
- * 
- *   Mode (property, u, read/write, emits-change)
- *     0 = Integrated
- *     1 = Hybrid
- *     2 = Manual
+ * Mode property (u, read/write, emits-change):
+ *     0 = Integrated   — dGPU blocked, iGPU only
+ *     1 = Hybrid       — both GPUs available
+ *     2 = Manual       — explicit per-GPU control via cardwire
+ *     3 = Smart        — daemon decides per-app whether to allow dGPU access
  *
  * Reactive updates come for free via PropertiesChanged: no polling,
  * no file-watching. Mode changes from any client (CLI, this extension,
@@ -34,24 +34,30 @@ const INTERFACE   = 'com.github.opengamingcollective.cardwire.Mode';
 const MODE_INTEGRATED = 0;
 const MODE_HYBRID     = 1;
 const MODE_MANUAL     = 2;
+const MODE_SMART      = 3;
 
 const MODE_ID_BY_INT = {
     [MODE_INTEGRATED]: 'integrated',
     [MODE_HYBRID]:     'hybrid',
     [MODE_MANUAL]:     'manual',
+    [MODE_SMART]:      'smart',
 };
 
 const MODE_INT_BY_ID = {
     integrated: MODE_INTEGRATED,
     hybrid:     MODE_HYBRID,
     manual:     MODE_MANUAL,
+    smart:      MODE_SMART,
 };
 
+/* Custom icons in icons/<basename>.svg. If a mode uses a stock theme icon
+ * instead, set `stockIcon` (and omit the custom icon file). */
 function getModes() {
     return [
         { id: 'integrated', label: _('Integrated'), icon: 'cardwire-integrated-symbolic' },
         { id: 'hybrid',     label: _('Hybrid'),     icon: 'cardwire-hybrid-symbolic'     },
         { id: 'manual',     label: _('Manual'),     icon: 'cardwire-manual-symbolic'     },
+        { id: 'smart',      label: _('Smart'),      icon: 'cardwire-smart-symbolic' },
     ];
 }
 
@@ -81,11 +87,14 @@ class CardwireToggle extends QuickMenuToggle {
         this._inFlight       = false;
         this._modeItems      = new Map();
 
-        // Pre-build gicons for each mode so we're not constructing on every refresh
+        // Pre-build gicons (custom file-backed or stock themed) for each mode
         this._modeIcons = new Map();
         for (const m of getModes()) {
-            this._modeIcons.set(m.id,
-                makeCustomIcon(extensionPath, m.icon));
+            if (m.icon) {
+                this._modeIcons.set(m.id, makeCustomIcon(extensionPath, m.icon));
+            } else if (m.stockIcon) {
+                this._modeIcons.set(m.id, new Gio.ThemedIcon({ name: m.stockIcon }));
+            }
         }
 
         this.menu.setHeader('preferences-system-symbolic', _('GPU Mode'));
@@ -102,7 +111,8 @@ class CardwireToggle extends QuickMenuToggle {
         }
 
         // Click on toggle body cycles integrated <-> hybrid.
-        // Manual is reachable only via the sub-menu.
+        // Manual and Smart are reachable only via the sub-menu — they're
+        // intentional choices, not something to accidentally land on.
         this.connect('clicked', () => {
             if (this._inFlight) return;
             const next = this._currentMode === 'integrated' ? 'hybrid' : 'integrated';
@@ -166,7 +176,7 @@ class CardwireToggle extends QuickMenuToggle {
             this._applyModeFromInt(cached.unpack());
             return;
         }
-    
+
         // Cache not populated yet, like initial login
         this._proxy.call(
             'org.freedesktop.DBus.Properties.Get',
@@ -231,10 +241,14 @@ class CardwireToggle extends QuickMenuToggle {
         this._currentMode = mode;
 
         this.subtitle = mode.charAt(0).toUpperCase() + mode.slice(1);
-        // "checked" lit means dGPU is active (Hybrid uses both; Integrated blocks dGPU).
-        this.checked = (mode === 'hybrid');
+        // "checked" lit means dGPU is reachable.
+        // Hybrid: dGPU always available.
+        // Smart: dGPU is conditionally available per-app, so we light up too.
+        // Integrated: dGPU blocked.
+        // Manual: ambiguous — defer to off; the sub-menu dot still shows the active mode.
+        this.checked = (mode === 'hybrid' || mode === 'smart');
 
-        // Swap to the custom icon for this mode
+        // Swap to the icon for this mode (custom or stock)
         const gicon = this._modeIcons.get(mode);
         if (gicon) this.gicon = gicon;
 
