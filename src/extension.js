@@ -56,8 +56,8 @@ function getModes() {
     return [
         { id: 'integrated', label: _('Integrated'), icon: 'cardwire-integrated-symbolic' },
         { id: 'hybrid',     label: _('Hybrid'),     icon: 'cardwire-hybrid-symbolic'     },
-        { id: 'manual',     label: _('Manual'),     icon: 'cardwire-manual-symbolic'     },
         { id: 'smart',      label: _('Smart'),      icon: 'cardwire-smart-symbolic'      },
+        { id: 'manual',     label: _('Manual'),     icon: 'cardwire-manual-symbolic'     },
     ];
 }
 
