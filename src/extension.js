@@ -57,7 +57,7 @@ function getModes() {
         { id: 'integrated', label: _('Integrated'), icon: 'cardwire-integrated-symbolic' },
         { id: 'hybrid',     label: _('Hybrid'),     icon: 'cardwire-hybrid-symbolic'     },
         { id: 'manual',     label: _('Manual'),     icon: 'cardwire-manual-symbolic'     },
-        { id: 'smart',      label: _('Smart'),      icon: 'cardwire-smart-symbolic' },
+        { id: 'smart',      label: _('Smart'),      icon: 'cardwire-smart-symbolic'      },
     ];
 }
 
@@ -72,14 +72,15 @@ function makeCustomIcon(extensionPath, iconBaseName) {
 
 const CardwireToggle = GObject.registerClass(
 class CardwireToggle extends QuickMenuToggle {
-    _init(extensionPath) {
+    _init(extensionPath, extensionObject) {
         super._init({
             title: _('GPU Mode'),
             iconName: 'preferences-system-symbolic',
             toggleMode: false,
         });
 
-        this._extensionPath  = extensionPath;
+        this._extensionPath   = extensionPath;
+        this._extensionObject = extensionObject;
         this._currentMode    = null;
         this._proxy          = null;
         this._ownerChangedId = 0;
@@ -109,6 +110,19 @@ class CardwireToggle extends QuickMenuToggle {
             this.menu.addMenuItem(item);
             this._modeItems.set(m.id, item);
         }
+
+        // Separator and Settings link at the bottom of the sub-menu
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        const settingsItem = new PopupMenu.PopupMenuItem(_('Settings…'));
+        settingsItem.connect('activate', () => {
+            // Close both the sub-menu and the parent Quick Settings panel
+            // so the prefs window opens cleanly without overlapping UI.
+            this.menu.close();
+            Main.panel.statusArea.quickSettings.menu.close();
+            this._extensionObject.openPreferences();
+        });
+        this.menu.addMenuItem(settingsItem);
 
         // Click on toggle body cycles integrated <-> hybrid.
         // Manual and Smart are reachable only via the sub-menu — they're
@@ -276,9 +290,9 @@ class CardwireToggle extends QuickMenuToggle {
 
 const CardwireIndicator = GObject.registerClass(
 class CardwireIndicator extends SystemIndicator {
-    _init(extensionPath) {
+    _init(extensionPath, extensionObject) {
         super._init();
-        this._toggle = new CardwireToggle(extensionPath);
+        this._toggle = new CardwireToggle(extensionPath, extensionObject);
         this.quickSettingsItems.push(this._toggle);
     }
 });
@@ -287,7 +301,9 @@ export default class CardwireExtension extends Extension {
     enable() {
         // `this.path` is the absolute path to the extension's directory —
         // we forward it down so child widgets can resolve icons/ files.
-        this._indicator = new CardwireIndicator(this.path);
+        // `this` is the Extension instance; the toggle uses its
+        // openPreferences() method for the Settings menu item.
+        this._indicator = new CardwireIndicator(this.path, this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
     }
 

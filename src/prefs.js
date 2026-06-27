@@ -37,32 +37,40 @@ const MODE_MANUAL     = 2;
 const MODE_SMART      = 3;
 
 /* Display order for the battery-mode dropdown. Index in this array is the
- * Gtk.StringList position; .value is the underlying u32 sent to D-Bus. */
-const BATTERY_MODE_CHOICES = [
-    { value: MODE_INTEGRATED, label: _('Integrated') },
-    { value: MODE_HYBRID,     label: _('Hybrid')     },
-    { value: MODE_MANUAL,     label: _('Manual')     },
-    { value: MODE_SMART,      label: _('Smart')      },
-];
+ * Gtk.StringList position; .value is the underlying u32 sent to D-Bus.
+ *
+ * Returned by a function (not a const) because gettext (`_`) can only be
+ * called from inside extension methods, not at module load time. */
+function getBatteryModeChoices() {
+    return [
+        { value: MODE_INTEGRATED, label: _('Integrated') },
+        { value: MODE_HYBRID,     label: _('Hybrid')     },
+        { value: MODE_MANUAL,     label: _('Manual')     },
+        { value: MODE_SMART,      label: _('Smart')      },
+    ];
+}
 
-/* Three boolean properties shown as switches */
-const CONFIG_SWITCHES = [
-    {
-        property: 'AutoApplyGpuState',
-        title:    _('Auto-apply GPU state'),
-        subtitle: _('Apply the saved GPU mode automatically when the daemon starts.'),
-    },
-    {
-        property: 'BatteryAutoSwitch',
-        title:    _('Auto-switch mode on battery'),
-        subtitle: _('Switch to a chosen mode automatically when running on battery.'),
-    },
-    {
-        property: 'ExperimentalNvidiaBlock',
-        title:    _('Experimental Nvidia block'),
-        subtitle: _('Enable extra blocking paths for Nvidia GPUs. May affect stability.'),
-    },
-];
+/* Three boolean properties shown as switches. Function for the same reason
+ * as above — _() must be called after the extension is instantiated. */
+function getConfigSwitches() {
+    return [
+        {
+            property: 'AutoApplyGpuState',
+            title:    _('Auto-apply GPU state'),
+            subtitle: _('Apply the saved GPU mode automatically when the daemon starts.'),
+        },
+        {
+            property: 'BatteryAutoSwitch',
+            title:    _('Auto-switch mode on battery'),
+            subtitle: _('Switch to a chosen mode automatically when running on battery.'),
+        },
+        {
+            property: 'ExperimentalNvidiaBlock',
+            title:    _('Experimental Nvidia block'),
+            subtitle: _('Enable extra blocking paths for Nvidia GPUs. May affect stability.'),
+        },
+    ];
+}
 
 export default class CardwirePrefs extends ExtensionPreferences {
     fillPreferencesWindow(window) {
@@ -95,10 +103,10 @@ export default class CardwirePrefs extends ExtensionPreferences {
         this._proxy          = null;
         this._propsChangedId = 0;
         this._ownerChangedId = 0;
-        this._suppressWrite  = false;       // guard against echo loops
+        this._suppressWrite  = false; // guard against echo loops
 
         // Build boolean rows
-        for (const def of CONFIG_SWITCHES) {
+        for (const def of getConfigSwitches()) {
             const row = new Adw.SwitchRow({
                 title:    def.title,
                 subtitle: def.subtitle,
@@ -116,8 +124,9 @@ export default class CardwirePrefs extends ExtensionPreferences {
         }
 
         // Build battery-mode dropdown
+        const batteryModeChoices = getBatteryModeChoices();
         const modeList = new Gtk.StringList();
-        for (const c of BATTERY_MODE_CHOICES) modeList.append(c.label);
+        for (const c of batteryModeChoices) modeList.append(c.label);
 
         this._batteryModeRow = new Adw.ComboRow({
             title:     _('Battery mode'),
@@ -130,7 +139,7 @@ export default class CardwirePrefs extends ExtensionPreferences {
         this._batteryModeRow.connect('notify::selected', () => {
             if (this._suppressWrite) return;
             const idx = this._batteryModeRow.get_selected();
-            const choice = BATTERY_MODE_CHOICES[idx];
+            const choice = batteryModeChoices[idx];
             if (choice) this._writeUintProperty('BatteryAutoSwitchMode', choice.value);
         });
 
@@ -169,7 +178,7 @@ export default class CardwirePrefs extends ExtensionPreferences {
         // Reflect external changes (e.g. from `cardwire config ...` cli)
         this._propsChangedId = this._proxy.connect(
             'g-properties-changed', (proxy, changed, _invalidated) => {
-                for (const def of CONFIG_SWITCHES) {
+                for (const def of getConfigSwitches()) {
                     const v = changed.lookup_value(def.property, null);
                     if (v) this._applyBool(def.property, v.unpack());
                 }
@@ -189,7 +198,7 @@ export default class CardwirePrefs extends ExtensionPreferences {
 
         // Populate from cache; if empty, do an explicit GetAll
         let anyCached = false;
-        for (const def of CONFIG_SWITCHES) {
+        for (const def of getConfigSwitches()) {
             const cached = this._proxy.get_cached_property(def.property);
             if (cached) {
                 this._applyBool(def.property, cached.unpack());
@@ -225,7 +234,7 @@ export default class CardwirePrefs extends ExtensionPreferences {
         });
 
         const [dict] = reply.deep_unpack();
-        for (const def of CONFIG_SWITCHES) {
+        for (const def of getConfigSwitches()) {
             const v = dict[def.property];
             if (v !== undefined) this._applyBool(def.property, v.deep_unpack());
         }
@@ -299,7 +308,7 @@ export default class CardwirePrefs extends ExtensionPreferences {
     _applyBatteryMode(intVal) {
         if (!this._batteryModeRow) return;
 
-        const idx = BATTERY_MODE_CHOICES.findIndex(c => c.value === intVal);
+        const idx = getBatteryModeChoices().findIndex(c => c.value === intVal);
         if (idx < 0) {
             log(`cardwire prefs: unknown battery mode ${intVal}`);
             return;
