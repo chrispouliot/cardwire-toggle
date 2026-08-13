@@ -4,17 +4,17 @@
  * window. Talks directly to the daemon over D-Bus — no privileged write
  * to /etc/cardwire/cardwire.toml needed.
  *
- * cardwired Config interface (com.github.opengamingcollective.cardwire.Config):
+ * cardwired Config interface (org.opengamingcollective.cardwire.Config):
  *   AutoApplyGpuState        (bool, property, read/write)
  *   BatteryAutoSwitch        (bool, property, read/write)
  *   BatteryAutoSwitchMode    (u32, property,  read/write)
  *   ExperimentalNvidiaBlock  (bool, property, read/write)
- *   SaveToFile()             (method, persists in-memory config to disk)
+ *   ExternalDisplayAutoSwitch (bool, property, read/write)
  *
  * Mode enum used for BatteryAutoSwitchMode (matches the main Mode property):
  *   0 = Integrated   1 = Hybrid   2 = Manual   3 = Smart
  *
- * Changes apply immediately and are persisted to disk via SaveToFile.
+ * Changes apply immediately and are persisted by the property setters.
  */
 
 import Adw from 'gi://Adw';
@@ -26,9 +26,10 @@ import Gtk from 'gi://Gtk';
 import { ExtensionPreferences, gettext as _ }
     from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-const BUS_NAME    = 'com.github.opengamingcollective.cardwire';
-const OBJECT_PATH = '/com/github/opengamingcollective/cardwire';
-const CONFIG_IFACE = 'com.github.opengamingcollective.cardwire.Config';
+const BUS_NAME     = 'org.opengamingcollective.cardwire';
+const OBJECT_PATH  = '/org/opengamingcollective/cardwire';
+const CONFIG_IFACE = 'org.opengamingcollective.cardwire.Config';
+const MODE_IFACE   = 'org.opengamingcollective.cardwire.Mode';
 
 /* Mode enum — must match the values used by extension.js / cardwired */
 const MODE_INTEGRATED = 0;
@@ -50,7 +51,7 @@ function getBatteryModeChoices() {
     ];
 }
 
-/* Three boolean properties shown as switches. Function for the same reason
+/* Boolean properties shown as switches. Function for the same reason
  * as above — _() must be called after the extension is instantiated.
  * `group` controls which Adw.PreferencesGroup the row is added to. */
 function getConfigSwitches() {
@@ -66,6 +67,12 @@ function getConfigSwitches() {
             group:    'general',
             title:    _('Experimental Nvidia block'),
             subtitle: _('Enable extra blocking paths for Nvidia GPUs. May affect stability.'),
+        },
+        {
+            property: 'ExternalDisplayAutoSwitch',
+            group:    'general',
+            title:    _('External display auto-switch'),
+            subtitle: _('Keep the dedicated GPU available when an external display requires it.'),
         },
         {
             property: 'BatteryAutoSwitch',
@@ -113,8 +120,12 @@ export default class CardwirePrefs extends ExtensionPreferences {
         this._switchRows     = new Map();
         this._batteryModeRow = null;
         this._proxy          = null;
+        this._modeProxy      = null;
         this._propsChangedId = 0;
         this._ownerChangedId = 0;
+        this._modeOwnerChangedId = 0;
+        this._batteryModeChoices = [];
+        this._batteryModeValue = null;
         this._suppressWrite  = false; // guard against echo loops
 
         // Build boolean rows, routing each to its declared group
@@ -140,28 +151,26 @@ export default class CardwirePrefs extends ExtensionPreferences {
 
         // Build battery-mode dropdown, added to the Battery group right after
         // the BatteryAutoSwitch row so the relationship is visually clear
-        const batteryModeChoices = getBatteryModeChoices();
-        const modeList = new Gtk.StringList();
-        for (const c of batteryModeChoices) modeList.append(c.label);
+        this._modeList = new Gtk.StringList();
 
         this._batteryModeRow = new Adw.ComboRow({
             title:     _('Battery mode'),
             subtitle:  _('Mode to use when auto-switch on battery is enabled.'),
-            model:     modeList,
-            selected:  0,
+            model:     this._modeList,
+            selected:  Gtk.INVALID_LIST_POSITION,
             sensitive: false,
         });
 
         this._batteryModeRow.connect('notify::selected', () => {
             if (this._suppressWrite) return;
             const idx = this._batteryModeRow.get_selected();
-            const choice = batteryModeChoices[idx];
+            const choice = this._batteryModeChoices[idx];
             if (choice) this._writeUintProperty('BatteryAutoSwitchMode', choice.value);
         });
 
         this._batteryGroup.add(this._batteryModeRow);
 
-        this._initProxy().catch(e => logError(e, 'cardwire prefs: initProxy failed'));
+        this._initProxies().catch(e => logError(e, 'cardwire prefs: initProxies failed'));
 
         window.connect('close-request', () => {
             this._teardown();
@@ -169,20 +178,27 @@ export default class CardwirePrefs extends ExtensionPreferences {
         });
     }
 
-    async _initProxy() {
+    _newProxy(interfaceName) {
+        return new Promise((resolve, reject) => {
+            Gio.DBusProxy.new(
+                Gio.DBus.system,
+                Gio.DBusProxyFlags.NONE,
+                null,
+                BUS_NAME, OBJECT_PATH, interfaceName,
+                null,
+                (src, res) => {
+                    try { resolve(Gio.DBusProxy.new_finish(res)); }
+                    catch (e) { reject(e); }
+                });
+        });
+    }
+
+    async _initProxies() {
         try {
-            this._proxy = await new Promise((resolve, reject) => {
-                Gio.DBusProxy.new(
-                    Gio.DBus.system,
-                    Gio.DBusProxyFlags.NONE,
-                    null,
-                    BUS_NAME, OBJECT_PATH, CONFIG_IFACE,
-                    null,
-                    (src, res) => {
-                        try { resolve(Gio.DBusProxy.new_finish(res)); }
-                        catch (e) { reject(e); }
-                    });
-            });
+            [this._proxy, this._modeProxy] = await Promise.all([
+                this._newProxy(CONFIG_IFACE),
+                this._newProxy(MODE_IFACE),
+            ]);
         } catch (e) {
             this._showError(_('Failed to connect to cardwire daemon: %s').format(e.message));
             return;
@@ -190,6 +206,8 @@ export default class CardwirePrefs extends ExtensionPreferences {
 
         this._ownerChangedId = this._proxy.connect(
             'notify::g-name-owner', () => this._onOwnerChanged());
+        this._modeOwnerChangedId = this._modeProxy.connect(
+            'notify::g-name-owner', () => this._onModeOwnerChanged());
 
         // Reflect external changes (e.g. from `cardwire config ...` cli)
         this._propsChangedId = this._proxy.connect(
@@ -203,6 +221,47 @@ export default class CardwirePrefs extends ExtensionPreferences {
             });
 
         this._onOwnerChanged();
+        this._onModeOwnerChanged();
+    }
+
+    _onModeOwnerChanged() {
+        if (this._modeProxy.g_name_owner === null) {
+            this._setAvailableModes([]);
+            return;
+        }
+
+        this._readAvailableModes().catch(e => {
+            logError(e, 'cardwire prefs: AvailableModes failed');
+            this._setAvailableModes([]);
+        });
+    }
+
+    async _readAvailableModes() {
+        const reply = await new Promise((resolve, reject) => {
+            this._modeProxy.call(
+                'AvailableModes', null,
+                Gio.DBusCallFlags.NONE, -1, null,
+                (proxy, res) => {
+                    try { resolve(proxy.call_finish(res)); }
+                    catch (e) { reject(e); }
+                });
+        });
+
+        const [modeInts] = reply.deep_unpack();
+        this._setAvailableModes(modeInts);
+    }
+
+    _setAvailableModes(modeInts) {
+        const available = new Set(modeInts);
+        this._batteryModeChoices = getBatteryModeChoices()
+            .filter(choice => available.has(choice.value));
+        this._modeList.splice(
+            0,
+            this._modeList.get_n_items(),
+            this._batteryModeChoices.map(choice => choice.label));
+
+        if (this._batteryModeValue !== null)
+            this._applyBatteryMode(this._batteryModeValue);
     }
 
     _onOwnerChanged() {
@@ -282,7 +341,6 @@ export default class CardwirePrefs extends ExtensionPreferences {
             (proxy, res) => {
                 try {
                     proxy.call_finish(res);
-                    this._saveToFile();
                 } catch (e) {
                     logError(e, `cardwire prefs: Set ${name} failed`);
                     // Revert the widget to whatever the daemon actually has
@@ -294,15 +352,6 @@ export default class CardwirePrefs extends ExtensionPreferences {
                         this._applyBatteryMode(cached.unpack());
                     }
                 }
-            });
-    }
-
-    _saveToFile() {
-        this._proxy.call(
-            'SaveToFile', null, Gio.DBusCallFlags.NONE, -1, null,
-            (proxy, res) => {
-                try { proxy.call_finish(res); }
-                catch (e) { logError(e, 'cardwire prefs: SaveToFile failed'); }
             });
     }
 
@@ -323,10 +372,17 @@ export default class CardwirePrefs extends ExtensionPreferences {
 
     _applyBatteryMode(intVal) {
         if (!this._batteryModeRow) return;
+        this._batteryModeValue = intVal;
 
-        const idx = getBatteryModeChoices().findIndex(c => c.value === intVal);
+        const idx = this._batteryModeChoices.findIndex(c => c.value === intVal);
         if (idx < 0) {
-            log(`cardwire prefs: unknown battery mode ${intVal}`);
+            this._suppressWrite = true;
+            try {
+                this._batteryModeRow.set_selected(Gtk.INVALID_LIST_POSITION);
+                this._batteryModeRow.set_sensitive(this._batteryModeChoices.length > 0);
+            } finally {
+                this._suppressWrite = false;
+            }
             return;
         }
 
@@ -363,6 +419,13 @@ export default class CardwirePrefs extends ExtensionPreferences {
             this._proxy.disconnect(this._ownerChangedId);
             this._ownerChangedId = 0;
         }
+        if (this._modeOwnerChangedId && this._modeProxy) {
+            this._modeProxy.disconnect(this._modeOwnerChangedId);
+            this._modeOwnerChangedId = 0;
+        }
         this._proxy = null;
+        this._modeProxy = null;
+        this._batteryModeChoices = [];
+        this._batteryModeValue = null;
     }
 }

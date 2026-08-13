@@ -1,9 +1,9 @@
 /* extension.js — Cardwire GPU Mode Quick Settings toggle
  *
  * Talks to the cardwired system daemon over D-Bus:
- *   bus name : com.github.opengamingcollective.cardwire
- *   path     : /com/github/opengamingcollective/cardwire
- *   iface    : com.github.opengamingcollective.cardwire.Mode
+ *   bus name : org.opengamingcollective.cardwire
+ *   path     : /org/opengamingcollective/cardwire
+ *   iface    : org.opengamingcollective.cardwire.Mode
  *
  * Mode property (u, read/write, emits-change):
  *     0 = Integrated   — dGPU blocked, iGPU only
@@ -27,9 +27,9 @@ import { QuickMenuToggle, SystemIndicator } from 'resource:///org/gnome/shell/ui
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-const BUS_NAME    = 'com.github.opengamingcollective.cardwire';
-const OBJECT_PATH = '/com/github/opengamingcollective/cardwire';
-const INTERFACE   = 'com.github.opengamingcollective.cardwire.Mode';
+const BUS_NAME    = 'org.opengamingcollective.cardwire';
+const OBJECT_PATH = '/org/opengamingcollective/cardwire';
+const INTERFACE   = 'org.opengamingcollective.cardwire.Mode';
 
 const MODE_INTEGRATED = 0;
 const MODE_HYBRID     = 1;
@@ -87,6 +87,7 @@ class CardwireToggle extends QuickMenuToggle {
         this._propsChangedId = 0;
         this._inFlight       = false;
         this._modeItems      = new Map();
+        this._availableModes = new Set();
 
         // Pre-build gicons (custom file-backed or stock themed) for each mode
         this._modeIcons = new Map();
@@ -109,6 +110,7 @@ class CardwireToggle extends QuickMenuToggle {
             });
             this.menu.addMenuItem(item);
             this._modeItems.set(m.id, item);
+            item.visible = false;
         }
 
         // Separator and Settings link at the bottom of the sub-menu
@@ -129,7 +131,11 @@ class CardwireToggle extends QuickMenuToggle {
         // intentional choices, not something to accidentally land on.
         this.connect('clicked', () => {
             if (this._inFlight) return;
-            const next = this._currentMode === 'integrated' ? 'hybrid' : 'integrated';
+            const preferred = this._currentMode === 'integrated' ? 'hybrid' : 'integrated';
+            const next = this._availableModes.has(preferred)
+                ? preferred
+                : this._availableModes.values().next().value;
+            if (!next) return;
             this._setMode(next);
         });
 
@@ -170,8 +176,10 @@ class CardwireToggle extends QuickMenuToggle {
 
         if (present) {
             this._refresh();
+            this._refreshAvailableModes();
         } else {
             this._currentMode = null;
+            this._applyAvailableModes([]);
             this.subtitle = _('Daemon not running');
         }
     }
@@ -207,8 +215,26 @@ class CardwireToggle extends QuickMenuToggle {
             });
     }
 
+    _refreshAvailableModes() {
+        if (!this._proxy || this._proxy.g_name_owner === null) return;
+
+        this._proxy.call(
+            'AvailableModes', null,
+            Gio.DBusCallFlags.NONE, -1, null,
+            (proxy, res) => {
+                try {
+                    const [modeInts] = proxy.call_finish(res).deep_unpack();
+                    this._applyAvailableModes(modeInts);
+                } catch (e) {
+                    logError(e, 'cardwire: AvailableModes failed');
+                    this._applyAvailableModes([]);
+                }
+            });
+    }
+
     _setMode(modeId) {
         if (modeId === this._currentMode || this._inFlight) return;
+        if (!this._availableModes.has(modeId)) return;
         const intVal = MODE_INT_BY_ID[modeId];
         if (intVal === undefined) return;
 
@@ -240,6 +266,14 @@ class CardwireToggle extends QuickMenuToggle {
     }
 
     /* ---- UI sync ---- */
+
+    _applyAvailableModes(modeInts) {
+        this._availableModes = new Set(
+            modeInts.map(intVal => MODE_ID_BY_INT[intVal]).filter(Boolean));
+
+        for (const [id, item] of this._modeItems)
+            item.visible = this._availableModes.has(id);
+    }
 
     _applyModeFromInt(intVal) {
         const id = MODE_ID_BY_INT[intVal];
@@ -284,6 +318,7 @@ class CardwireToggle extends QuickMenuToggle {
             this._ownerChangedId = 0;
         }
         this._proxy = null;
+        this._availableModes.clear();
         super.destroy();
     }
 });
