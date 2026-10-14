@@ -77,8 +77,8 @@ function getConfigSwitches() {
         {
             property: 'BatteryAutoSwitch',
             group:    'battery',
-            title:    _('Auto-switch mode on battery'),
-            subtitle: _('Switch to a chosen mode automatically when running on battery.'),
+            title:    _('Auto-switch GPU mode'),
+            subtitle: _('Switch to Integrated on battery, and to the mode below on AC power.'),
         },
     ];
 }
@@ -154,8 +154,8 @@ export default class CardwirePrefs extends ExtensionPreferences {
         this._modeList = new Gtk.StringList();
 
         this._batteryModeRow = new Adw.ComboRow({
-            title:     _('Battery mode'),
-            subtitle:  _('Mode to use when auto-switch on battery is enabled.'),
+            title:     _('Mode on AC power'),
+            subtitle:  _('Mode to switch to when AC power returns, if auto-switch is enabled.'),
             model:     this._modeList,
             selected:  Gtk.INVALID_LIST_POSITION,
             sensitive: false,
@@ -255,10 +255,17 @@ export default class CardwirePrefs extends ExtensionPreferences {
         const available = new Set(modeInts);
         this._batteryModeChoices = getBatteryModeChoices()
             .filter(choice => available.has(choice.value));
-        this._modeList.splice(
-            0,
-            this._modeList.get_n_items(),
-            this._batteryModeChoices.map(choice => choice.label));
+        // Refilling the model makes Adw.ComboRow auto-select item 0 and emit
+        // notify::selected; suppress it so we don't write that to the daemon.
+        this._suppressWrite = true;
+        try {
+            this._modeList.splice(
+                0,
+                this._modeList.get_n_items(),
+                this._batteryModeChoices.map(choice => choice.label));
+        } finally {
+            this._suppressWrite = false;
+        }
 
         if (this._batteryModeValue !== null)
             this._applyBatteryMode(this._batteryModeValue);
